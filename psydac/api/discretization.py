@@ -34,11 +34,10 @@ from psydac.api.glt          import DiscreteGltExpr
 from psydac.api.expr         import DiscreteExpr
 from psydac.api.equation     import DiscreteEquation
 from psydac.api.utilities    import flatten
-from psydac.fem.basic        import FemSpace
 from psydac.fem.splines      import SplineSpace
 from psydac.fem.tensor       import TensorFemSpace
 from psydac.fem.partitioning import create_cart, construct_connectivity, construct_interface_spaces, construct_reduced_interface_spaces
-from psydac.fem.vector       import MultipatchFemSpace, VectorFemSpace
+from psydac.fem.vector       import ProductFemSpace, VectorFemSpace
 from psydac.cad.geometry     import Geometry
 from psydac.mapping.discrete import NurbsMapping
 from psydac.linalg.stencil   import StencilVectorSpace
@@ -55,7 +54,7 @@ __all__ = (
 #==============================================================================
 def change_dtype(V, dtype):
     """
-    Given a FemSpace V, change its underlying coeff_space (i.e. the space of
+    Given a FemSpace V, change its underlying vector_space (i.e. the space of
     its coefficients) so that it matches the required data type.
 
     Parameters
@@ -64,31 +63,31 @@ def change_dtype(V, dtype):
         The FEM space, which is modified in place.
 
     dtype : float or complex
-        Datatype of the new coeff_space.
+        Datatype of the new vector_space.
 
     Returns
     -------
     FemSpace
         The same FEM space passed as input, which was modified in place.
     """
-    if not V.coeff_space.dtype == dtype:
-        if isinstance(V.coeff_space, BlockVectorSpace):
+    if not V.vector_space.dtype == dtype:
+        if isinstance(V.vector_space, BlockVectorSpace):
             # Recreate the BlockVectorSpace
             new_spaces = []
             for v in V.spaces:
                 change_dtype(v, dtype)
-                new_spaces.append(v.coeff_space)
-            V._coeff_space = BlockVectorSpace(*new_spaces, connectivity=V.coeff_space.connectivity)
+                new_spaces.append(v.vector_space)
+            V._vector_space = BlockVectorSpace(*new_spaces, connectivity=V.vector_space.connectivity)
 
-        # If the coeff_space is a StencilVectorSpace
+        # If the vector_space is a StencilVectorSpace
         else:
             # Recreate the StencilVectorSpace
-            interfaces = V.coeff_space.interfaces
-            V._coeff_space = StencilVectorSpace(V.coeff_space.cart, dtype=dtype)
+            interfaces = V.vector_space.interfaces
+            V._vector_space = StencilVectorSpace(V.vector_space.cart, dtype=dtype)
 
             # Recreate the interface in the StencilVectorSpace
             for (axis, ext), interface_space in interfaces.items():
-                V.coeff_space.set_interface(axis, ext, interface_space.cart)
+                V.vector_space.set_interface(axis, ext, interface_space.cart)
 
     return V
 
@@ -116,7 +115,7 @@ def get_max_degree_of_one_space(Vh):
     elif isinstance(Vh, VectorFemSpace):
         return [max(p) for p in zip(*Vh.degree)]
 
-    elif isinstance(Vh, MultipatchFemSpace):
+    elif isinstance(Vh, ProductFemSpace):
         degree = [get_max_degree_of_one_space(Vh_i) for Vh_i in Vh.spaces]
         return [max(p) for p in zip(*degree)]
 
@@ -417,7 +416,7 @@ def discretize_space(V, domain_h, *, degree=None, multiplicity=None, knots=None,
         else:
             mappings  = [domain_h.mappings[inter.logical_domain.name] for inter in interiors]
 
-        # Get all the FEM spaces from the mapping and convert their coeff_space at the dtype needed
+        # Get all the FEM spaces from the mapping and convert their vector_space at the dtype needed
         spaces    = [change_dtype(m.space, dtype) for m in mappings]
         g_spaces  = dict(zip(interiors, spaces))
         spaces    = [S.spaces for S in spaces]
@@ -504,22 +503,11 @@ def discretize_space(V, domain_h, *, degree=None, multiplicity=None, knots=None,
         new_g_spaces[inter]   = Vh
 
     construct_reduced_interface_spaces(g_spaces, new_g_spaces, interiors, connectivity)
-    spaces = list(new_g_spaces.values())
 
-    if connectivity:
-        assert all((isinstance(Wh, FemSpace) and not Wh.is_multipatch) for Wh in spaces)
-        Vh = MultipatchFemSpace(*spaces, connectivity=connectivity)
-    else:
-        assert all(isinstance(Wh, FemSpace) for Wh in spaces)
-        if  len(spaces) == 1:
-            Vh = spaces[0]
-        else:
-            Vh = VectorFemSpace(*spaces)
-    
+    Vh = ProductFemSpace(*new_g_spaces.values(), connectivity=connectivity)
     Vh.symbolic_space = V
 
     return Vh
-
 
 #==============================================================================
 def discretize_domain(domain, *, filename=None, ncells=None, periodic=None, comm=None, mpi_dims_mask=None):

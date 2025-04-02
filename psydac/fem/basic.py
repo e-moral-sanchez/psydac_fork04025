@@ -31,6 +31,7 @@ class FemSpace( metaclass=ABCMeta ):
         """
         Number of dimensions in logical space,
         i.e. number of scalar logical coordinates.
+
         """
 
     @property
@@ -39,6 +40,7 @@ class FemSpace( metaclass=ABCMeta ):
         """
         Tuple of booleans: along each logical dimension,
         say if domain is periodic.
+
         """
 
     @property
@@ -47,58 +49,27 @@ class FemSpace( metaclass=ABCMeta ):
         """
         Mapping from logical coordinates 'eta' to physical coordinates 'x'.
         If None, we assume identity mapping (hence x=eta).
+
         """
 
     @property
     @abstractmethod
-    def coeff_space( self ):
-        """
-        Vector space of the coefficients (mapping invariant).
-        :rtype: psydac.linalg.basic.VectorSpace
-        """
+    def vector_space( self ):
+        """Topologically associated vector space."""
 
     @property
     @abstractmethod
-    def is_multipatch( self ):
+    def is_product( self ):
         """
-        Boolean flag that describes whether the space is a multi-patch space.
-        :rtype: bool
-        """
+        Boolean flag that describes whether the space is a product space.
+        If True, an element of this space can be decomposed into separate fields.
 
-    @property
-    @abstractmethod
-    def is_vector_valued( self ):
-        """
-        Boolean flag that describes whether the space is vector-valued.
-        :rtype: bool
         """
 
     @property
     @abstractmethod
     def symbolic_space( self ):
         """Symbolic space."""
-
-    @property
-    @abstractmethod
-    def patch_spaces(self):
-        """
-        Return the patch spaces (self if single-patch) as a tuple.
-        """
-
-    @property
-    @abstractmethod
-    def component_spaces(self):
-        """
-        Return the component spaces (self if scalar-valued) as a tuple.
-        """
-
-    @property
-    @abstractmethod
-    def axis_spaces(self):
-        """
-        Return the axis spaces (self if univariate) as a tuple.
-        """
-
 
     #---------------------------------------
     # Abstract interface: evaluation methods
@@ -154,33 +125,28 @@ class FemSpace( metaclass=ABCMeta ):
     # Concrete methods
     #----------------------
     def __mul__(self, a):
-        raise NotImplementedError('if this method __mul__ is used, it should not be implemented like this: TODO')
-    # [MCP 27.03.2025]: commented because improper implementation. must be rewritten if needed
-                      
-    #     from psydac.fem.vector import create_product_space
+        from psydac.fem.vector import ProductFemSpace
 
-    #     spaces = [*(self.spaces if self.is_product else [self]),
-    #               *(   a.spaces if    a.is_product else    [a])]
+        spaces = [*(self.spaces if self.is_product else [self]),
+                  *(   a.spaces if    a.is_product else    [a])]
+ 
+        space = ProductFemSpace(*spaces)
+        if a.symbolic_space and self.symbolic_space:
+            space._symbolic_space =  self.symbolic_space*a.symbolic_space
+        return space
 
-    #     space = create_product_space(*spaces)
-    #     if a.symbolic_space and self.symbolic_space:
-    #         space._symbolic_space =  self.symbolic_space*a.symbolic_space
-    #     return space
-
+    # ...
     def __rmul__(self, a):
-        raise NotImplementedError('if this method __rmul__ is used, it should not be implemented like this: TODO')
-    # [MCP 27.03.2025]: commented because improper implementation. must be rewritten if needed
-    
-    #     from psydac.fem.vector import create_product_space
+        from psydac.fem.vector import ProductFemSpace
 
-    #     spaces = [*(   a.spaces if    a.is_product else    [a]),
-    #               *(self.spaces if self.is_product else [self]),]
+        spaces = [*(   a.spaces if    a.is_product else    [a]),
+                  *(self.spaces if self.is_product else [self]),]
 
-    #     space = create_product_space(*spaces)
+        space = ProductFemSpace(*spaces)
 
-    #     if a.symbolic_space and self.symbolic_space:
-    #         space._symbolic_space =  a.symbolic_space * self.symbolic_space
-    #     return space
+        if a.symbolic_space and self.symbolic_space:
+            space._symbolic_space =  a.symbolic_space * self.symbolic_space
+        return space
 
 #---------------------------------------
 # OLD STUFF
@@ -220,7 +186,7 @@ class FemSpace( metaclass=ABCMeta ):
 #          """
 #          Number of linearly independent elements in basis.
 #          For a tensor product space this is a tuple of integers.
-#
+#  
 #          """
 #
 #  # NOTE: why is 'degree' part of abstract interface?
@@ -260,12 +226,12 @@ class FemField:
 
         if coeffs is not None:
             assert isinstance( coeffs, Vector )
-            assert space.coeff_space is coeffs.space
+            assert space.vector_space is coeffs.space
         else:
-            coeffs = space.coeff_space.zeros()
+            coeffs = space.vector_space.zeros()
 
-        # Case of vector-valued or multipatch field, element of a Product Space
-        if space.is_multipatch or space.is_vector_valued:
+        # Case of a vector field, element of a ProductSpace
+        if space.is_product:
             fields = tuple(FemField(V, c) for V, c in zip(space.spaces, coeffs))
         else:
             fields = tuple()
@@ -288,32 +254,16 @@ class FemField:
         the elements of the basis of a Finite element space.
 
         Coefficients are stored into one element of the vector space in
-        'self.space.coeff_space', which is topologically associated to
+        'self.space.vector_space', which is topologically associated to
         the finite element space.
 
         """
         return self._coeffs
-
+        
     # ...
     @property
     def fields(self):
         return self._fields
-
-    @property
-    def patch_fields(self):
-        """ Return the patch fields (only self if single-patch) as a tuple """
-        if self.space.is_multipatch:
-            return self.fields
-        else:
-            return (self,)
-
-    @property
-    def component_fields(self):
-        """ Return the component fields (only self if scalar-valued) as a tuple """
-        if self.space.is_vector_valued:
-            return self.fields
-        else:
-            return (self,)
 
     # ...
     def __getitem__(self, key):
@@ -328,7 +278,7 @@ class FemField:
     def gradient( self, *eta , weights=None):
         """Evaluate gradient of weighted field at location identified by logical coordinates eta."""
         return self._space.eval_field_gradient( self, *eta , weights=weights)
-
+        
     # ...
     def divergence(self, *eta, weights=None):
         """Evaluate divergence of weighted vector field at location identified by logical coordinates eta."""

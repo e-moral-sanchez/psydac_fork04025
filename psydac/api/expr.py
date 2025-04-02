@@ -17,7 +17,7 @@ from psydac.cad.geometry      import Geometry
 from psydac.mapping.discrete  import SplineMapping, NurbsMapping
 from psydac.fem.splines       import SplineSpace
 from psydac.fem.tensor        import TensorFemSpace
-from psydac.fem.vector        import MultipatchFemSpace
+from psydac.fem.vector        import ProductFemSpace
 
 __all__ = ('DiscreteExpr',)
 #==============================================================================
@@ -119,7 +119,7 @@ class DiscreteExpr(BasicCodeGen):
             # TODO generalize to use multiple fields
             coeffs = ()
             for F in fields:
-                if isinstance(Vh, MultipatchFemSpace):
+                if isinstance(Vh, ProductFemSpace):
                     basis_values = [CollocationBasisValues(grid, V, nderiv=nderiv) for V in Vh.spaces]
                     basis = [bs.basis for bs in basis_values]
                     spans = [bs.spans for bs in basis_values]

@@ -35,7 +35,7 @@ from .utilities  import build_pythran_types_header, variables
 from .utilities  import build_pyccel_type_annotations
 from .utilities  import math_atoms_as_str
 
-from psydac.fem.vector import MultipatchFemSpace
+from psydac.fem.vector import ProductFemSpace
 from .nodes            import Zeros
 
 #==============================================================================
@@ -196,7 +196,7 @@ class ExprKernel(SplBasic):
         Vh   = self.space
         expr = self.expr
         dim  = Vh.ldim
-        if isinstance(Vh, MultipatchFemSpace):
+        if isinstance(Vh, ProductFemSpace):
             size = len(Vh.spaces)
         else:
             size = 1
@@ -208,7 +208,7 @@ class ExprKernel(SplBasic):
         n_elements = Vh.ncells
         degrees    = Vh.degree
         # TODO improve
-        if isinstance(Vh, MultipatchFemSpace):
+        if isinstance(Vh, ProductFemSpace):
             degrees = degrees[0]
         # ...
 
